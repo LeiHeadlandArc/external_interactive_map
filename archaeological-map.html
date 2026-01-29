@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Headland Archaeology - Site Map</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background:#f5f5f5; }
+.container { max-width:1400px; margin:0 auto; padding:20px; }
+.header { background:white; padding:20px; border-radius:8px; margin-bottom:20px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+.map-container { background:white; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+.controls {
+    padding:10px; 
+    background:#127985; 
+    border-bottom:1px solid #dee2e6; 
+    position:relative;
+    display: flex;
+    align-items: baseline;   
+    gap: 15px;
+    flex-wrap: wrap;
+}
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+.filter-group label { font-weight:600; margin-right:8px; color:#ffffff; }
+.filter-group select, .filter-group input { padding:6px 12px; border:1px solid #ced4da; border-radius:4px; font-size:14px; }
+.clear-button {
+    background: #1aa6b3;        
+    color: #ffffff;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-left: auto;
+    transition: background 0.2s ease, transform 0.1s ease;
+    align-self: flex-end;
+  }
+
+.clear-button:hover {
+    background: #158f9a;
+}
+
+.clear-button:active {
+    background: #0f6f78;
+    transform: translateY(1px);
+}
+/* search bar floating */
+.map-search-box {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1000;
+    background: rgba(128, 128, 128, 0.1);
+    padding: 8px 12px;
+    border-radius: 25px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    min-width: 280px;
+    backdrop-filter: blur(5px);
+}
+
+.map-search-box input {
+    width: 100%;
+    padding: 6px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 20px;
+    font-size: 14px;
+    outline: none;
+    background: rgba(255, 255, 255, 0.9);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+}
+
+.map-search-box input:focus {
+    border-color: #ced4da;
+    background: rgba(255, 255, 255, 1);
+}
+
+.map-search-box input::placeholder {
+    color: #6c757d;
+}
+#searchDropdown { 
+    position:absolute; 
+    background:white; 
+    border:1px solid #ccc; 
+    max-height:200px; 
+    overflow-y:auto; 
+    width: 100%; 
+    display:none; 
+    z-index:1001;
+    top: 100%; 
+    left: 0;
+    margin-top: 5px;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+#searchDropdown div { padding:5px 10px; cursor:pointer; }
+#searchDropdown div:hover, #searchDropdown .selected { background:#3498db; color:white; }
+#map { height:600px; width:100%; }
+.leaflet-popup-content { margin:15px; min-width:280px; }
+.popup-title { font-size:18px; font-weight:700; color:#2c3e50; margin-bottom:12px; border-bottom:2px solid #3498db; padding-bottom:5px; }
+.popup-field { margin:8px 0; display:flex; }
+.popup-label { font-weight:600; color:#7f8c8d; min-width:120px; }
+.popup-value { color:#2c3e50; flex:1; }
+.popup-value a { color:#3498db; text-decoration:none; }
+.popup-value a:hover { text-decoration:underline; }
+.stats { padding:15px; background:#e9ecef; border-top:1px solid #dee2e6; font-size:14px; color:#495057; }
+
+.custom-marker-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+}
+@media (max-width: 1024px) {
+    .filter-group {
+        flex: 1 1 calc(50% - 15px); /* 两个一行 */
+    }
+
+    .clear-button {
+        flex: 1 1 100%;
+        margin-left: 0;
+    }
+}
+@media (max-width: 600px) {
+    .filter-group {
+        flex: 1 1 100%;   /* 一个一行 */
+    }
+
+    .filter-group label {
+        min-width: 90px;
+    }
+
+    .filter-group select {
+        width: 100%;
+    }
+
+    .clear-button {
+        width: 100%;
+        text-align: center;
+    }
+}
+
+/*Cluster map symbol added*/
+.marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
+    background-color: rgba(192, 57, 43, 0.6);
+}
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
+    background-color: rgba(192, 57, 43, 0.8);
+    color: white;
+    font-weight: bold;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h2>Interactive map of Headland Archaeology projects</h2>
+  </div>
+  <div class="map-container">
+    <div class="controls">
+      <div class="filter-group">
+        <label>Country:</label>
+        <select id="countryFilter"><option value="all">All Countries</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Region:</label>
+        <select id="regionFilter"><option value="all">All Regions</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Service:</label>
+        <select id="serviceFilter"><option value="all">All Services</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Department:</label>
+        <select id="departmentFilter"><option value="all">All Departments</option></select>
+      </div>
+      <button id="clearButton" class="clear-button">Clear</button>
+    </div>
+    <div style="position: relative;">
+      <div id="map"></div>
+      <div class="map-search-box">
+        <input type="text" id="searchInput" placeholder="Search keywords..." autocomplete="off">
+        <div id="searchDropdown"></div>
+      </div>
+    </div>
+
+    <div class="stats"><span id="statsText">Loading sites from CSV...</span></div>
+  </div>
+</div>
+
+<script>
+// ===== CONFIG & SETUP =====
+const CSV_PATH = 'test_table.csv?v=' + Date.now(); //force the broswer to fetch the latest file every reload
+// render map before all map
+//const map = L.map('map').setView([54.6083, -3.6167], 8); 
+const map = L.map('map', {
+    zoomControl: false // STOP the default zoom button
+}).setView([54.6083, -3.6167], 10);
+//add it manually to the place I want it be 
+L.control.zoom({
+    position: 'bottomright' // 'topleft', 'topright', 'bottomleft', 'bottomright'
+}).addTo(map);
+// Tile layers
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'© OpenStreetMap contributors', maxZoom:19 });
+const grayscale = L.tileLayer('https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png',{ attribution:'© OpenStreetMap & CARTO', maxZoom:19 });
+const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{ attribution:'Tiles © Esri & contributors', maxZoom:19 });
+grayscale.addTo(map);
+
+L.control.layers({Grayscale:grayscale,'OpenStreetMap':osm,Satellite:esriSat},null,{position:'topright'}).addTo(map);
+map.attributionControl.setPrefix(false);
+
+// ===== DATA & STATE =====
+let markers = L.markerClusterGroup({
+    maxClusterRadius: 50,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false,
+    zoomToBoundsOnClick: true
+});
+markers.addTo(map);
+let allSites = [], uniqueServices = new Set(), uniqueDepartments = new Set(), uniqueCountries = new Set(), uniqueRegions = new Set() ;
+let heatLayer;
+let countryToRegions = new Map(); // country -> regions 
+
+
+// EPSG:27700 to 4326
+proj4.defs("EPSG:27700","+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs");
+function convert27700to4326(x,y){ const r=proj4('EPSG:27700','EPSG:4326',[x,y]); return {lon:r[0], lat:r[1]}; }
+
+// ===== FUNCTIONS =====
+function getMarkerIcon(service){ 
+    const color='#c0392b'; 
+ 
+    return L.divIcon({
+        className:'custom-marker', 
+        html:`<div class="custom-marker-dot" style="background-color:${color};"></div>`, 
+        iconSize:[9,9], 
+        iconAnchor:[6,6] 
+    }); 
+}
+
+function createPopup(row){
+  const fieldMap={'project_code': 'Project Code','project_name':'Project Name','year':'Year','service_detail':'Service Detail','service':'Service','department':'Department','period':'Period'};
+  let html=`<div class="popup-title">${row.project_name||'Unnamed Project'}</div>`;
+  for(let [k,l] of Object.entries(fieldMap)){ if(row[k] && k!=='project_name'){ html+=`<div class="popup-field"><span class="popup-label">${l}:</span><span class="popup-value">${row[k]}</span></div>`; } }
+  const ads=row.ads && row.ads.trim()!==''?`<a href="${row.ads}" target="_blank">Link to report</a>`:'Report link coming soon';
+  html+=`<div class="popup-field"><span class="popup-label">ADS:</span><span class="popup-value">${ads}</span></div>`;
+  return html;
+}
+
+function updateFilterOptions(){
+  const s=document.getElementById('serviceFilter'), d=document.getElementById('departmentFilter');
+  const c=document.getElementById('countryFilter'), r=document.getElementById('regionFilter');
+  
+  s.innerHTML='<option value="all">All Services</option>';
+  d.innerHTML='<option value="all">All Departments</option>';
+  c.innerHTML='<option value="all">All Countries</option>';
+  r.innerHTML='<option value="all">All Regions</option>';
+  
+  const individualServices = new Set();
+  const individualDepartments = new Set();
+  const individualCountries = new Set();
+  const individualRegions = new Set();
+  
+  [...uniqueServices].forEach(v => {
+    if(v.includes(' and ')) {
+      v.split(' and ').forEach(part => individualServices.add(part.trim()));
+    } else {
+      individualServices.add(v);
+    }
+  });
+  
+  [...uniqueDepartments].forEach(v => {
+    if(v.includes(' and ')) {
+      v.split(' and ').forEach(part => individualDepartments.add(part.trim()));
+    } else {
+      individualDepartments.add(v);
+    }
+  });
+  
+  [...uniqueCountries].forEach(v => {
+    if(v.includes(' and ')) {
+      v.split(' and ').forEach(part => individualCountries.add(part.trim()));
+    } else {
+      individualCountries.add(v);
+    }
+  });
+  
+  [...uniqueRegions].forEach(v => {
+    if(v.includes(' and ')) {
+      v.split(' and ').forEach(part => individualRegions.add(part.trim()));
+    } else {
+      individualRegions.add(v);
+    }
+  });
+  
+  [...individualServices].sort().forEach(v => { 
+    const o=document.createElement('option'); 
+    o.value=v; 
+    o.textContent=v; 
+    s.appendChild(o); 
+  });
+  
+  [...individualDepartments].sort().forEach(v => { 
+    const o=document.createElement('option'); 
+    o.value=v; 
+    o.textContent=v; 
+    d.appendChild(o); 
+  });
+  
+  [...individualCountries].sort().forEach(v => { 
+    const o=document.createElement('option'); 
+    o.value=v; 
+    o.textContent=v; 
+    c.appendChild(o); 
+  });
+  
+  [...individualRegions].sort().forEach(v => { 
+    const o=document.createElement('option'); 
+    o.value=v; 
+    o.textContent=v; 
+    r.appendChild(o); 
+  });
+}
+
+function updateRegionOptions(selectedCountry) {
+    const r = document.getElementById('regionFilter');
+    r.innerHTML = '<option value="all">All Regions</option>';
+    
+    let regionsToShow = new Set();
+    
+    if(selectedCountry === 'all') {
+        regionsToShow = uniqueRegions;
+    } else {
+        // only selected country's region
+        if(countryToRegions.has(selectedCountry)) {
+            regionsToShow = countryToRegions.get(selectedCountry);
+        }
+    }
+    
+
+    const individualRegions = new Set();
+    [...regionsToShow].forEach(v => {
+        if(v.includes(' and ')) {
+            v.split(' and ').forEach(part => individualRegions.add(part.trim()));
+        } else {
+            individualRegions.add(v);
+        }
+    });
+    
+    [...individualRegions].sort().forEach(v => {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        r.appendChild(o);
+    });
+}
+
+
+function addMarkers(sites){
+
+  markers.clearLayers(); 
+  const bounds=[];
+  sites.forEach(row=>{
+    const x=parseFloat(row.x), y=parseFloat(row.y);
+    if(isNaN(x)||isNaN(y)) return;
+    const latlon=convert27700to4326(x,y);
+    const marker=L.marker([latlon.lat,latlon.lon],{icon:getMarkerIcon(row.service)}).bindPopup(createPopup(row));
+
+    markers.addLayer(marker); 
+    bounds.push([latlon.lat,latlon.lon]);
+  });
+  
+  
+  if(bounds.length>0 && map.getZoom() < 15) { 
+    map.fitBounds(bounds,{padding:[50,50]});
+    map.setZoom(Math.max(map.getZoom(), 5.5));
+  }
+  
+  updateStats(sites.length);
+  updateHeatmap(sites);
+}
+
+
+
+function filterSites(){
+  const sf=document.getElementById('serviceFilter').value, df=document.getElementById('departmentFilter').value;
+  const cf=document.getElementById('countryFilter').value, rf=document.getElementById('regionFilter').value;
+  const search=document.getElementById('searchInput').value.toLowerCase();
+  
+  const filtered=allSites.filter(r=>{
+    // Country filter
+    if(cf!=='all') {
+      if(!r.country) return false;
+      if(r.country.includes(' and ')) {
+        if(!r.country.includes(cf)) return false;
+      } else {
+        if(r.country !== cf) return false;
+      }
+    }
+    
+    // Region filter
+    if(rf!=='all') {
+      if(!r.region) return false;
+      if(r.region.includes(' and ')) {
+        if(!r.region.includes(rf)) return false;
+      } else {
+        if(r.region !== rf) return false;
+      }
+    }
+    
+    // Service filter
+    if(sf!=='all') {
+      if(!r.service) return false;
+      if(r.service.includes(' and ')) {
+        if(!r.service.includes(sf)) return false;
+      } else {
+        if(r.service !== sf) return false;
+      }
+    }
+    
+    // Department filter
+    if(df!=='all') {
+      if(!r.department) return false;
+      if(r.department.includes(' and ')) {
+        if(!r.department.includes(df)) return false;
+      } else {
+        if(r.department !== df) return false;
+      }
+    }
+    
+    // Search across all fields
+    if(search) {
+      const searchableFields = [
+        r.project_code, r.project_name, r.year, r.service_detail, 
+        r.service, r.department, r.period, r.country, r.region
+      ];
+      const matchFound = searchableFields.some(field => 
+        field && field.toString().toLowerCase().includes(search)
+      );
+      if(!matchFound) return false;
+    }
+    
+    return true;
+  });
+  addMarkers(filtered);
+  updateSearchDropdown(filtered);
+}
+
+function clearAllFilters() {
+    // 重置所有下拉列表为 "all"
+    document.getElementById('countryFilter').value = 'all';
+    document.getElementById('regionFilter').value = 'all';
+    document.getElementById('serviceFilter').value = 'all';
+    document.getElementById('departmentFilter').value = 'all';
+    
+    // 清空搜索框
+    document.getElementById('searchInput').value = '';
+    
+    // 隐藏搜索下拉菜单
+    document.getElementById('searchDropdown').style.display = 'none';
+    
+    // 重置 region 列表为显示所有 regions
+    updateRegionOptions('all');
+    
+    // 显示所有站点
+    addMarkers(allSites);
+    updateSearchDropdown([]);
+}
+
+function updateStats(count){document.getElementById('statsText').textContent=`Showing ${count} of ${allSites.length} sites`;}
+
+// ===== HEATMAP & VIEW MANAGEMENT =====
+function createHeatmap(){
+  const points=allSites.map(r=>{ 
+    const x = parseFloat(r.x), y = parseFloat(r.y);
+    if(isNaN(x)||isNaN(y)) return null;
+    const ll=convert27700to4326(x,y);
+    return [ll.lat,ll.lon,1]; 
+  }).filter(p=>p!==null);
+  
+  heatLayer = L.heatLayer(points, {
+    radius: 25,
+    blur: 18,   
+    maxZoom: 10,
+    gradient: {
+        0.05: 'green', 
+        0.3: 'yellow', 
+        0.5:'orange',
+        0.7: 'red'     
+    }
+});
+  
+
+  map.on('zoomend', toggleLayers);
+  toggleLayers(); 
+}
+
+function updateHeatmap(filteredSites){
+  if(!heatLayer) return;
+  const points=filteredSites.map(r=>{ 
+    const x = parseFloat(r.x), y = parseFloat(r.y);
+    if(isNaN(x)||isNaN(y)) return null;
+    const ll=convert27700to4326(x,y); 
+    return [ll.lat,ll.lon,1]; 
+  }).filter(p=>p!==null);
+  
+  heatLayer.setLatLngs(points);
+  toggleLayers(); 
+}
+
+function toggleLayers() {
+    const zoomLevel = map.getZoom();
+    const HEATMAP_ZOOM_THRESHOLD = 9; 
+    const CLUSTER_ZOOM_THRESHOLD = 12; 
+    
+
+    if (zoomLevel <= HEATMAP_ZOOM_THRESHOLD) {
+        if (!map.hasLayer(heatLayer)) { map.addLayer(heatLayer); }
+        if (map.hasLayer(markers)) { map.removeLayer(markers); }
+    } else if (zoomLevel > HEATMAP_ZOOM_THRESHOLD && zoomLevel <= CLUSTER_ZOOM_THRESHOLD) {
+
+        if (map.hasLayer(heatLayer)) { map.removeLayer(heatLayer); }
+        if (!map.hasLayer(markers)) { map.addLayer(markers); }
+
+    } else {
+  
+        if (map.hasLayer(heatLayer)) { map.removeLayer(heatLayer); }
+        if (!map.hasLayer(markers)) { map.addLayer(markers); }
+    }
+}
+
+// ===== SEARCH DROPDOWN =====
+const searchInput=document.getElementById('searchInput'), searchDropdown=document.getElementById('searchDropdown');
+const searchBox = document.querySelector('.map-search-box');
+
+L.DomEvent.disableClickPropagation(searchBox);
+L.DomEvent.disableScrollPropagation(searchBox);
+function updateSearchDropdown(sites){
+  searchDropdown.innerHTML='';
+  if(sites.length===0 || searchInput.value===''){ searchDropdown.style.display='none'; return; }
+  
+  sites.slice(0,10).forEach((row,i)=>{
+    if (row.project_name) {
+        const div=document.createElement('div');
+
+        let displayText = row.project_name;
+        if(row.project_code) displayText += ` (${row.project_code})`;
+        
+        div.textContent = displayText;
+        div.addEventListener('click',()=>{ 
+            searchInput.value=row.project_name; 
+            filterSites(); 
+            searchDropdown.style.display='none'; 
+        });
+        searchDropdown.appendChild(div);
+    }
+  });
+  searchDropdown.style.display='block';
+}
+searchInput.addEventListener('input',filterSites);
+searchInput.addEventListener('keydown',e=>{
+  const items=searchDropdown.querySelectorAll('div'); if(items.length===0) return;
+  let selected=document.querySelector('#searchDropdown .selected');
+  if(e.key==='ArrowDown'){ e.preventDefault(); if(!selected){items[0].classList.add('selected');} else { const next=selected.nextElementSibling; if(next){selected.classList.remove('selected'); next.classList.add('selected'); } } }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); if(selected){ const prev=selected.previousElementSibling; if(prev){selected.classList.remove('selected'); prev.classList.add('selected'); } } }
+  else if(e.key==='Enter'){ e.preventDefault(); if(selected){ 
+    searchInput.value=selected.textContent; 
+    filterSites(); 
+    searchDropdown.style.display='none'; 
+  } }
+});
+
+// ===== LOAD CSV =====
+Papa.parse(CSV_PATH,{
+  download:true, header:true, skipEmptyLines:true,
+  complete: results=>{
+    allSites=results.data.filter(r => r.x && r.y && !isNaN(parseFloat(r.x)) && !isNaN(parseFloat(r.y)));
+    
+  allSites.forEach(r=>{ 
+    if(r.service) uniqueServices.add(r.service); 
+    if(r.department) uniqueDepartments.add(r.department);
+    if(r.country) uniqueCountries.add(r.country);
+    if(r.region) uniqueRegions.add(r.region);
+    
+
+    if(r.country && r.region) {
+
+        const countries = r.country.includes(' and ') ? 
+            r.country.split(' and ').map(c => c.trim()) : [r.country];
+        
+
+        const regions = r.region.includes(' and ') ? 
+            r.region.split(' and ').map(reg => reg.trim()) : [r.region];
+        
+        countries.forEach(country => {
+            if(!countryToRegions.has(country)) {
+                countryToRegions.set(country, new Set());
+            }
+            regions.forEach(region => {
+                countryToRegions.get(country).add(region);
+            });
+        });
+    }
+});
+    
+    updateFilterOptions();
+    updateRegionOptions('all'); // reset region list
+    addMarkers(allSites); 
+    createHeatmap(); 
+  },
+  error: e=>{ console.error('CSV error:',e); document.getElementById('statsText').textContent=`Error loading CSV: ${e.message}`; }
+});
+
+// ===== FILTER EVENTS =====
+document.getElementById('countryFilter').addEventListener('change', function() {
+    const selectedCountry = this.value;
+    updateRegionOptions(selectedCountry);
+    
+    //reset region as 'all'
+    document.getElementById('regionFilter').value = 'all';
+    
+    filterSites();
+});
+document.getElementById('regionFilter').addEventListener('change',filterSites);
+document.getElementById('serviceFilter').addEventListener('change',filterSites);
+document.getElementById('departmentFilter').addEventListener('change',filterSites);
+// Clear
+document.getElementById('clearButton').addEventListener('click', clearAllFilters);
+</script>
+</body>
+</html>
