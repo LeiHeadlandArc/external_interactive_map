@@ -97,6 +97,94 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-s
 .map-search-box input::placeholder {
     color: #6c757d;
 }
+
+/* Container adjustments */
+.year-slider-container {
+    position: absolute;
+    right: 10px;
+    top: 47%;
+    transform: translateY(-50%);
+    z-index: 600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px 8px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.year-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #127985;
+    text-align: center;
+    min-width: 50px;
+}
+.year-slider-wrapper {
+    position: relative;
+    height: 300px;
+    width: 40px; /* Wider to accommodate rotated label */
+    display: flex;
+    justify-content: flex-end; /* Push sliders to the right */
+}
+
+/* The Track (The Grey/Teal Bar) */
+.slider-track {
+    position: absolute;
+    right: 5px;
+    width: 6px;
+    height: 100%;
+    background: #e0e0e0;
+    border-radius: 3px;
+}
+
+/* Vertical Input Logic */
+.year-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 300px; /* Width becomes Height because of rotation */
+    height: 6px;
+    background: transparent;
+    position: absolute;
+    right: -142px; /* Center it on the track */
+    top: 147px;
+    transform: rotate(-90deg);
+    pointer-events: none; /* Allow clicks to pass through to the other thumb */
+    margin: 0;
+}
+
+/* Slider Thumb Styling */
+.year-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    background: #127985;
+    border: 2px solid white;
+    cursor: pointer;
+    pointer-events: auto; /* Enable clicks only on thumb */
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+/* Dynamic Label Styling */
+.year-current-label {
+    position: absolute;
+    left: -85px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    color: #127985;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-align: center;
+    width: 200px;
+    pointer-events: none;
+    font-family: "Myriad Pro", "Segoe UI", Arial, sans-serif;
+}
+
+
+
+
 #searchDropdown { 
     position:absolute; 
     background:white; 
@@ -114,7 +202,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-s
 }
 #searchDropdown div { padding:5px 10px; cursor:pointer; }
 #searchDropdown div:hover, #searchDropdown .selected { background:#3498db; color:white; }
-#map { height:600px; width:100%; }
+#map { height:500px; width:100%; }
+
 .leaflet-popup-content { margin:15px; min-width:280px; }
 .popup-title { font-size:18px; font-weight:700; color:#2c3e50; margin-bottom:12px; border-bottom:2px solid #3498db; padding-bottom:5px; }
 .popup-field { margin:8px 0; display:flex; }
@@ -191,8 +280,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-s
         <select id="serviceFilter"><option value="all">All Services</option></select>
       </div>
       <div class="filter-group">
-        <label>Department:</label>
-        <select id="departmentFilter"><option value="all">All Departments</option></select>
+        <label>Discipline:</label>
+        <select id="disciplineFilter"><option value="all">All Disciplines</option></select>
       </div>
       <button id="clearButton" class="clear-button">Clear</button>
     </div>
@@ -202,17 +291,30 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-s
         <input type="text" id="searchInput" placeholder="Search keywords..." autocomplete="off">
         <div id="searchDropdown"></div>
       </div>
+        <div class="year-slider-container">
+          <div class="year-label" id="yearMaxLabel">2025</div>
+          <div class="year-slider-wrapper">
+              <div class="year-current-label" id="yearCurrentLabel">1900-2025</div>
+              
+              <div class="slider-track" id="sliderTrack"></div>
+              
+              <input type="range" id="yearSliderMin" class="year-slider" min="1900" max="2025" value="1900">
+              <input type="range" id="yearSliderMax" class="year-slider" min="1900" max="2025" value="2025">
+          </div>
+          <div class="year-label" id="yearMinLabel">1900</div>
+      </div>
+      </div>
     </div>
 
     <div class="stats"><span id="statsText">Loading sites from CSV...</span></div>
   </div>
-</div>
+
 
 <script>
 // ===== CONFIG & SETUP =====
 const CSV_PATH = 'test_table.csv?v=' + Date.now(); //force the broswer to fetch the latest file every reload
 // render map before all map
-//const map = L.map('map').setView([54.6083, -3.6167], 8); 
+
 const map = L.map('map', {
     zoomControl: false // STOP the default zoom button
 }).setView([54.6083, -3.6167], 10);
@@ -237,10 +339,10 @@ let markers = L.markerClusterGroup({
     zoomToBoundsOnClick: true
 });
 markers.addTo(map);
-let allSites = [], uniqueServices = new Set(), uniqueDepartments = new Set(), uniqueCountries = new Set(), uniqueRegions = new Set() ;
+let allSites = [], uniqueServices = new Set(), uniqueDisciplines = new Set(), uniqueCountries = new Set(), uniqueRegions = new Set() ;
 let heatLayer;
 let countryToRegions = new Map(); // country -> regions 
-
+let minYear = 1900, maxYear = 2025; //draft year range, update by dataset info
 
 // EPSG:27700 to 4326
 proj4.defs("EPSG:27700","+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs");
@@ -259,7 +361,7 @@ function getMarkerIcon(service){
 }
 
 function createPopup(row){
-  const fieldMap={'project_code': 'Project Code','project_name':'Project Name','year':'Year','service_detail':'Service Detail','service':'Service','department':'Department','period':'Period'};
+  const fieldMap={'project_code': 'Project Code','project_name':'Project Name','year':'Year','service_detail':'Service Detail','service':'Service','discipline':'Discipline','period':'Period'};
   let html=`<div class="popup-title">${row.project_name||'Unnamed Project'}</div>`;
   for(let [k,l] of Object.entries(fieldMap)){ if(row[k] && k!=='project_name'){ html+=`<div class="popup-field"><span class="popup-label">${l}:</span><span class="popup-value">${row[k]}</span></div>`; } }
   const ads=row.ads && row.ads.trim()!==''?`<a href="${row.ads}" target="_blank">Link to report</a>`:'Report link coming soon';
@@ -268,34 +370,33 @@ function createPopup(row){
 }
 
 function updateFilterOptions(){
-  const s=document.getElementById('serviceFilter'), d=document.getElementById('departmentFilter');
+  const s=document.getElementById('serviceFilter'), d=document.getElementById('disciplineFilter');
   const c=document.getElementById('countryFilter'), r=document.getElementById('regionFilter');
   
   s.innerHTML='<option value="all">All Services</option>';
-  d.innerHTML='<option value="all">All Departments</option>';
+  d.innerHTML='<option value="all">All Disciplines</option>';
   c.innerHTML='<option value="all">All Countries</option>';
   r.innerHTML='<option value="all">All Regions</option>';
   
   const individualServices = new Set();
-  const individualDepartments = new Set();
+  const individualDisciplines = new Set();
   const individualCountries = new Set();
   const individualRegions = new Set();
   
-  [...uniqueServices].forEach(v => {
-    if(v.includes(' and ')) {
-      v.split(' and ').forEach(part => individualServices.add(part.trim()));
-    } else {
-      individualServices.add(v);
-    }
-  });
-  
-  [...uniqueDepartments].forEach(v => {
-    if(v.includes(' and ')) {
-      v.split(' and ').forEach(part => individualDepartments.add(part.trim()));
-    } else {
-      individualDepartments.add(v);
-    }
-  });
+[...uniqueServices].forEach(v => {
+
+    const parts = v.split(',').flatMap(part => 
+      part.split(' and ').map(p => p.trim())
+    ).filter(p => p !== '');
+    parts.forEach(part => individualServices.add(part));
+});
+
+[...uniqueDisciplines].forEach(v => {
+    const parts = v.split(',').flatMap(part => 
+      part.split(' and ').map(p => p.trim())
+    ).filter(p => p !== '');
+    parts.forEach(part => individualDisciplines.add(part));
+});
   
   [...uniqueCountries].forEach(v => {
     if(v.includes(' and ')) {
@@ -320,7 +421,7 @@ function updateFilterOptions(){
     s.appendChild(o); 
   });
   
-  [...individualDepartments].sort().forEach(v => { 
+  [...individualDisciplines].sort().forEach(v => { 
     const o=document.createElement('option'); 
     o.value=v; 
     o.textContent=v; 
@@ -391,9 +492,15 @@ function addMarkers(sites){
   });
   
   
-  if(bounds.length>0 && map.getZoom() < 15) { 
-    map.fitBounds(bounds,{padding:[50,50]});
-    map.setZoom(Math.max(map.getZoom(), 5.5));
+
+  if(bounds.length > 0) {
+    const newBounds = L.latLngBounds(bounds);
+    
+
+    if (!map.getBounds().contains(newBounds)) {
+        map.fitBounds(newBounds, { padding: [50, 50], maxZoom: 15 });
+    }
+   
   }
   
   updateStats(sites.length);
@@ -403,10 +510,16 @@ function addMarkers(sites){
 
 
 function filterSites(){
-  const sf=document.getElementById('serviceFilter').value, df=document.getElementById('departmentFilter').value;
+  const sf=document.getElementById('serviceFilter').value, df=document.getElementById('disciplineFilter').value;
   const cf=document.getElementById('countryFilter').value, rf=document.getElementById('regionFilter').value;
   const search=document.getElementById('searchInput').value.toLowerCase();
   
+  // Get year infor
+  const minVal = parseInt(document.getElementById('yearSliderMin').value);
+  const maxVal = parseInt(document.getElementById('yearSliderMax').value);
+  const yearMin = Math.min(minVal, maxVal);
+  const yearMax = Math.max(minVal, maxVal);
+
   const filtered=allSites.filter(r=>{
     // Country filter
     if(cf!=='all') {
@@ -438,22 +551,26 @@ function filterSites(){
       }
     }
     
-    // Department filter
+    // discipline filter
     if(df!=='all') {
-      if(!r.department) return false;
-      if(r.department.includes(' and ')) {
-        if(!r.department.includes(df)) return false;
+      if(!r.discipline) return false;
+      if(r.discipline.includes(' and ')) {
+        if(!r.discipline.includes(df)) return false;
       } else {
-        if(r.department !== df) return false;
+        if(r.discipline !== df) return false;
       }
     }
     
+    // Year filter
+      if(r.year) {
+      const year = parseInt(r.year);
+      if(!isNaN(year) && (year < yearMin || year > yearMax)) {
+        return false;
+      }
+    }
     // Search across all fields
     if(search) {
-      const searchableFields = [
-        r.project_code, r.project_name, r.year, r.service_detail, 
-        r.service, r.department, r.period, r.country, r.region
-      ];
+      const searchableFields = [r.project_code, r.project_name];
       const matchFound = searchableFields.some(field => 
         field && field.toString().toLowerCase().includes(search)
       );
@@ -466,23 +583,89 @@ function filterSites(){
   updateSearchDropdown(filtered);
 }
 
+
+function updateYearRange() {
+    const sliderMin = document.getElementById('yearSliderMin');
+    const sliderMax = document.getElementById('yearSliderMax');
+    const currentLabel = document.getElementById('yearCurrentLabel');
+    const track = document.getElementById('sliderTrack');
+    
+    let minVal = parseInt(sliderMin.value);
+    let maxVal = parseInt(sliderMax.value);
+
+    // Ensure they don't cross
+    if (minVal > maxVal) {
+        // Just swap logic for filtering, don't force move them to allow sliding
+        [minVal, maxVal] = [maxVal, minVal];
+    }
+
+    // 1. Dynamic Label Logic
+    if (minVal === maxVal) {
+        currentLabel.textContent = minVal;
+    } else {
+        currentLabel.textContent = `Between ${minVal} - ${maxVal}`;
+    }
+
+    // 2. Dynamic Track Coloring (Grey out range)
+    const total = maxYear - minYear;
+    // Calculate percentages for the vertical gradient (bottom up)
+    const percent1 = ((minVal - minYear) / total) * 100;
+    const percent2 = ((maxVal - minYear) / total) * 100;
+
+    // Linear gradient for vertical track: Grey -> Teal -> Grey
+    track.style.background = `linear-gradient(to top, 
+        #e0e0e0 ${percent1}%, 
+        #127985 ${percent1}%, 
+        #127985 ${percent2}%, 
+        #e0e0e0 ${percent2}%)`;
+
+    filterSites();
+}
+
+// Ensure initYearSlider calls the update color immediately
+function initYearSlider() {
+    const years = allSites
+        .map(r => parseInt(r.year))
+        .filter(y => !isNaN(y));
+    
+    if(years.length > 0) {
+        minYear = Math.min(...years);
+        maxYear = Math.max(...years);
+    }
+    
+    const sliderMin = document.getElementById('yearSliderMin');
+    const sliderMax = document.getElementById('yearSliderMax');
+    
+    sliderMin.min = minYear;
+    sliderMin.max = maxYear;
+    sliderMin.value = minYear;
+    
+    sliderMax.min = minYear;
+    sliderMax.max = maxYear;
+    sliderMax.value = maxYear;
+    
+    document.getElementById('yearMinLabel').textContent = minYear;
+    document.getElementById('yearMaxLabel').textContent = maxYear;
+    
+    updateYearRange(); // Initialize track color and label
+}
+
 function clearAllFilters() {
-    // 重置所有下拉列表为 "all"
+
     document.getElementById('countryFilter').value = 'all';
     document.getElementById('regionFilter').value = 'all';
     document.getElementById('serviceFilter').value = 'all';
-    document.getElementById('departmentFilter').value = 'all';
-    
-    // 清空搜索框
+    document.getElementById('disciplineFilter').value = 'all';
     document.getElementById('searchInput').value = '';
-    
-    // 隐藏搜索下拉菜单
     document.getElementById('searchDropdown').style.display = 'none';
-    
-    // 重置 region 列表为显示所有 regions
+    document.getElementById('yearSliderMin').value = minYear;
+    document.getElementById('yearSliderMax').value = maxYear;
+    document.getElementById('yearCurrentLabel').textContent = `${minYear}-${maxYear}`;
+  
+
     updateRegionOptions('all');
-    
-    // 显示所有站点
+    initYearSlider()
+ 
     addMarkers(allSites);
     updateSearchDropdown([]);
 }
@@ -499,11 +682,11 @@ function createHeatmap(){
   }).filter(p=>p!==null);
   
   heatLayer = L.heatLayer(points, {
-    radius: 25,
-    blur: 18,   
+    radius: 20,
+    blur: 12,   
     maxZoom: 10,
     gradient: {
-        0.05: 'green', 
+        0.08: 'green', 
         0.3: 'yellow', 
         0.5:'orange',
         0.7: 'red'     
@@ -557,12 +740,29 @@ L.DomEvent.disableClickPropagation(searchBox);
 L.DomEvent.disableScrollPropagation(searchBox);
 function updateSearchDropdown(sites){
   searchDropdown.innerHTML='';
-  if(sites.length===0 || searchInput.value===''){ searchDropdown.style.display='none'; return; }
   
+  // if no result , no dropdown
+  if(searchInput.value==='') { 
+    searchDropdown.style.display='none'; 
+    return; 
+  }
+  
+  // notify when no match result
+  if(sites.length === 0) {
+    const div = document.createElement('div');
+    div.textContent = 'No results found';
+    div.style.color = '#999';
+    div.style.fontStyle = 'italic';
+    div.style.cursor = 'default';
+    searchDropdown.appendChild(div);
+    searchDropdown.style.display='block';
+    return;
+  }
+  
+  // first 10
   sites.slice(0,10).forEach((row,i)=>{
     if (row.project_name) {
         const div=document.createElement('div');
-
         let displayText = row.project_name;
         if(row.project_code) displayText += ` (${row.project_code})`;
         
@@ -575,9 +775,28 @@ function updateSearchDropdown(sites){
         searchDropdown.appendChild(div);
     }
   });
+  
+  // notify when over 10
+  if(sites.length > 10) {
+    const div = document.createElement('div');
+    div.textContent = `... and ${sites.length - 10} more results`;
+    div.style.color = '#666';
+    div.style.fontStyle = 'italic';
+    div.style.fontSize = '12px';
+    div.style.borderTop = '1px solid #eee';
+    div.style.cursor = 'default';
+    searchDropdown.appendChild(div);
+  }
+  
   searchDropdown.style.display='block';
 }
-searchInput.addEventListener('input',filterSites);
+searchInput.addEventListener('input', function() {
+    // Every search input will reset map scale
+    if(this.value !== '') {
+        map.setView([54.6083, -3.6167], 10);
+    }
+    filterSites();
+});
 searchInput.addEventListener('keydown',e=>{
   const items=searchDropdown.querySelectorAll('div'); if(items.length===0) return;
   let selected=document.querySelector('#searchDropdown .selected');
@@ -595,10 +814,12 @@ Papa.parse(CSV_PATH,{
   download:true, header:true, skipEmptyLines:true,
   complete: results=>{
     allSites=results.data.filter(r => r.x && r.y && !isNaN(parseFloat(r.x)) && !isNaN(parseFloat(r.y)));
-    
+        // check for field name
+    //console.log('First record:', allSites[0]);
+    //console.log('All field names:', Object.keys(allSites[0]));
   allSites.forEach(r=>{ 
     if(r.service) uniqueServices.add(r.service); 
-    if(r.department) uniqueDepartments.add(r.department);
+    if(r.discipline) uniqueDisciplines.add(r.discipline);
     if(r.country) uniqueCountries.add(r.country);
     if(r.region) uniqueRegions.add(r.region);
     
@@ -625,6 +846,7 @@ Papa.parse(CSV_PATH,{
     
     updateFilterOptions();
     updateRegionOptions('all'); // reset region list
+    initYearSlider(); //initial year
     addMarkers(allSites); 
     createHeatmap(); 
   },
@@ -643,9 +865,17 @@ document.getElementById('countryFilter').addEventListener('change', function() {
 });
 document.getElementById('regionFilter').addEventListener('change',filterSites);
 document.getElementById('serviceFilter').addEventListener('change',filterSites);
-document.getElementById('departmentFilter').addEventListener('change',filterSites);
+document.getElementById('disciplineFilter').addEventListener('change',filterSites);
 // Clear
 document.getElementById('clearButton').addEventListener('click', clearAllFilters);
+// Year sliding
+document.getElementById('yearSliderMin').addEventListener('input', updateYearRange);
+document.getElementById('yearSliderMax').addEventListener('input', updateYearRange);
+
+// Avoid map interaction disturbance
+const yearSliderContainer = document.querySelector('.year-slider-container');
+L.DomEvent.disableClickPropagation(yearSliderContainer);
+L.DomEvent.disableScrollPropagation(yearSliderContainer);
 </script>
 </body>
 </html>
